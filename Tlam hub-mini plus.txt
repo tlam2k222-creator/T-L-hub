@@ -1,173 +1,174 @@
 --[[ 
-    TLAM HUB - MINI PLUS FINAL V2 (FIXED MINIMIZE & ZERO GAP)
+    TLAM HUB - V12 PRO (RE-ORDERED SLIDERS)
+    - UI: Đẩy 2 thanh Slider xuống dưới cùng các nút chức năng.
+    - Design: Bo tròn cực mạnh, giao diện tối giản.
+    - Sync: ESP dính chặt theo Aim 0.7.
 ]]
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local UIS = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
 -- BIẾN HỆ THỐNG
-local aimbotEnabled, espEnabled, showPov, isShooting = false, false, false, false
-local aimMode = "OnAttack" 
+local aimbotEnabled, espEnabled, showPov = false, false, false
+local smartCheck = true 
+local aimMode = "OnAttack"
 local fovRadius, currentSpeed = 180, 16
-local FIXED_SNAP_SPEED = 0.35 
-local isDraggingSlider = false 
+local STICKY_SNAP_SPEED = 0.7 
 
--- 1. POV CIRCLE
+-- 1. FOV CIRCLE
 local fovCircle = Drawing.new("Circle")
-fovCircle.Thickness = 1; fovCircle.NumSides = 60; fovCircle.Radius = fovRadius
-fovCircle.Visible = false; fovCircle.Color = Color3.new(1,1,1); fovCircle.Transparency = 0.5
+fovCircle.Thickness = 1; fovCircle.NumSides = 100; fovCircle.Radius = fovRadius
+fovCircle.Visible = false; fovCircle.Color = Color3.new(1, 1, 1); fovCircle.Transparency = 0.8
 
--- 2. HỆ THỐNG ESP (BOX)
-local espCache = {}
-local function createEsp(player)
-    if player == LocalPlayer then return end
-    local lines = {
-        TL1 = Drawing.new("Line"), TL2 = Drawing.new("Line"),
-        TR1 = Drawing.new("Line"), TR2 = Drawing.new("Line"),
-        BL1 = Drawing.new("Line"), BL2 = Drawing.new("Line"),
-        BR1 = Drawing.new("Line"), BR2 = Drawing.new("Line")
-    }
-    for _, l in pairs(lines) do l.Thickness = 1; l.Color = Color3.new(1,1,1); l.Visible = false end
-    espCache[player] = lines
-end
+-- 2. HỆ THỐNG ESP SYNC
+local playerEsp = {}
+local function isTarget(p) return not smartCheck or (p.Team ~= LocalPlayer.Team) end
 
 local function updateEsp()
-    for player, lines in pairs(espCache) do
-        local char = player.Character
-        if espEnabled and char and char:FindFirstChild("HumanoidRootPart") and char.Humanoid.Health > 0 then
-            local pos, onScreen = Camera:WorldToViewportPoint(char.HumanoidRootPart.Position)
-            if onScreen then
-                local sX, sY = 1800 / pos.Z, 2500 / pos.Z
-                local x, y = pos.X, pos.Y
-                local edgeLen = sX * 0.25
-                lines.TL1.From = Vector2.new(x-sX/2, y-sY/2); lines.TL1.To = Vector2.new(x-sX/2 + edgeLen, y-sY/2)
-                lines.TL2.From = Vector2.new(x-sX/2, y-sY/2); lines.TL2.To = Vector2.new(x-sX/2, y-sY/2 + edgeLen)
-                lines.TR1.From = Vector2.new(x+sX/2, y-sY/2); lines.TR1.To = Vector2.new(x+sX/2 - edgeLen, y-sY/2)
-                lines.TR2.From = Vector2.new(x+sX/2, y-sY/2); lines.TR2.To = Vector2.new(x+sX/2, y-sY/2 + edgeLen)
-                lines.BL1.From = Vector2.new(x-sX/2, y+sY/2); lines.BL1.To = Vector2.new(x-sX/2 + edgeLen, y+sY/2)
-                lines.BL2.From = Vector2.new(x-sX/2, y+sY/2); lines.BL2.To = Vector2.new(x-sX/2, y+sY/2 - edgeLen)
-                lines.BR1.From = Vector2.new(x+sX/2, y+sY/2); lines.BR1.To = Vector2.new(x+sX/2 - edgeLen, y+sY/2)
-                lines.BR2.From = Vector2.new(x+sX/2, y+sY/2); lines.BR2.To = Vector2.new(x+sX/2, y+sY/2 - edgeLen)
-                for _, l in pairs(lines) do l.Visible = true end
-            else
-                for _, l in pairs(lines) do l.Visible = false end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local char = p.Character
+            if espEnabled and char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char.Humanoid.Health > 0 and isTarget(p) then
+                if not playerEsp[p] then 
+                    playerEsp[p] = { Tracer = Drawing.new("Line"), Corners = {} }
+                    for i = 1, 8 do 
+                        local l = Drawing.new("Line"); l.Thickness = 1.2; l.Color = Color3.new(1, 1, 1); table.insert(playerEsp[p].Corners, l)
+                    end
+                end
+                local root = char.HumanoidRootPart
+                local pos, on = Camera:WorldToViewportPoint(root.Position)
+                if on then
+                    local headPos = Camera:WorldToViewportPoint(char.Head.Position + Vector3.new(0, 0.5, 0))
+                    local legPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+                    local h, w = math.abs(headPos.Y - legPos.Y), math.abs(headPos.Y - legPos.Y) / 1.5
+                    local x, y = pos.X - w/2, pos.Y - h/2
+                    local cl = w/4
+                    local e = playerEsp[p]
+                    e.Tracer.Visible = true; e.Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y); e.Tracer.To = Vector2.new(pos.X, y + h)
+                    for i=1,8 do e.Corners[i].Visible = true end
+                    e.Corners[1].From = Vector2.new(x, y); e.Corners[1].To = Vector2.new(x + cl, y)
+                    e.Corners[2].From = Vector2.new(x, y); e.Corners[2].To = Vector2.new(x, y + cl)
+                    e.Corners[3].From = Vector2.new(x + w, y); e.Corners[3].To = Vector2.new(x + w - cl, y)
+                    e.Corners[4].From = Vector2.new(x + w, y); e.Corners[4].To = Vector2.new(x + w, y + cl)
+                    e.Corners[5].From = Vector2.new(x, y + h); e.Corners[5].To = Vector2.new(x + cl, y + h)
+                    e.Corners[6].From = Vector2.new(x, y + h); e.Corners[6].To = Vector2.new(x, y + h - cl)
+                    e.Corners[7].From = Vector2.new(x + w, y + h); e.Corners[7].To = Vector2.new(x + w - cl, y + h)
+                    e.Corners[8].From = Vector2.new(x + w, y + h); e.Corners[8].To = Vector2.new(x + w, y + h - cl)
+                else
+                    playerEsp[p].Tracer.Visible = false; for i=1,8 do playerEsp[p].Corners[i].Visible = false end
+                end
+            elseif playerEsp[p] then
+                playerEsp[p].Tracer.Visible = false; for i=1,8 do playerEsp[p].Corners[i].Visible = false end
             end
-        else
-            for _, l in pairs(lines) do l.Visible = false end
         end
     end
 end
 
--- 3. GIAO DIỆN (HEIGHT 210 - CỰC GỌN)
-local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
-screenGui.Name = "TLAM_MiniFinal_V2"
-screenGui.ResetOnSpawn = false
+-- 3. GIAO DIỆN (ĐÃ SẮP XẾP LẠI THỨ TỰ)
+local sg = Instance.new("ScreenGui")
+sg.Name = "TLAM_V12_PRO"
+pcall(function() sg.Parent = CoreGui end)
+if not sg.Parent then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
-local mainFrame = Instance.new("Frame", screenGui)
-mainFrame.Size = UDim2.new(0, 140, 0, 205) -- Chiều cao tối ưu sạch sẽ
-mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-mainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
-mainFrame.Active = true
-Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 6)
-Instance.new("UIStroke", mainFrame).Color = Color3.fromRGB(0, 180, 255)
+local main = Instance.new("Frame", sg)
+main.Size = UDim2.new(0, 155, 0, 265)
+main.Position = UDim2.new(0.5, 0, 0.5, 0); main.AnchorPoint = Vector2.new(0.5, 0.5)
+main.BackgroundColor3 = Color3.fromRGB(12, 12, 12); main.Active = true
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 15)
+local mStroke = Instance.new("UIStroke", main); mStroke.Color = Color3.new(1, 1, 1); mStroke.Thickness = 1.2
 
-local title = Instance.new("TextLabel", mainFrame)
-title.Size = UDim2.new(1, 0, 0, 25); title.Text = "TLAM HUB"; title.TextColor3 = Color3.fromRGB(0, 180, 255); title.Font = "GothamBold"; title.BackgroundTransparency = 1; title.TextSize = 10
+local titleBar = Instance.new("Frame", main)
+titleBar.Size = UDim2.new(1, 0, 0, 32); titleBar.BackgroundTransparency = 1
+local titleText = Instance.new("TextLabel", titleBar)
+titleText.Size = UDim2.new(1, 0, 1, 0); titleText.Text = "TLAM HUB"; titleText.TextColor3 = Color3.new(1,1,1); titleText.Font = "GothamBold"; titleText.TextSize = 11; titleText.BackgroundTransparency = 1
 
--- NÚT THU NHỎ & TẮT (VỊ TRÍ MỚI ĐỂ KHÔNG BỊ MẤT)
-local killBtn = Instance.new("TextButton", mainFrame); killBtn.Size = UDim2.new(0, 20, 0, 20); killBtn.Position = UDim2.new(1, -22, 0, 3); killBtn.Text = "×"; killBtn.TextColor3 = Color3.fromRGB(255, 50, 50); killBtn.BackgroundTransparency = 1; killBtn.TextSize = 18
-local minBtn = Instance.new("TextButton", mainFrame); minBtn.Size = UDim2.new(0, 20, 0, 20); minBtn.Position = UDim2.new(1, -40, 0, 3); minBtn.Text = "-"; minBtn.TextColor3 = Color3.new(1, 1, 1); minBtn.BackgroundTransparency = 1; minBtn.TextSize = 22
+local minBtn = Instance.new("TextButton", titleBar); minBtn.Size = UDim2.new(0,25,0,25); minBtn.Position = UDim2.new(0,8,0,3); minBtn.Text = "-"; minBtn.TextColor3 = Color3.new(1,1,1); minBtn.BackgroundTransparency = 1; minBtn.TextSize = 22
+local clsBtn = Instance.new("TextButton", titleBar); clsBtn.Size = UDim2.new(0,25,0,25); clsBtn.Position = UDim2.new(1,-33,0,3); clsBtn.Text = "X"; clsBtn.TextColor3 = Color3.new(1,1,1); clsBtn.BackgroundTransparency = 1; clsBtn.TextSize = 12
 
-local openBtn = Instance.new("ImageButton", screenGui); openBtn.Size = UDim2.new(0, 35, 0, 35); openBtn.Position = UDim2.new(0, 10, 0.5, 0); openBtn.Visible = false; openBtn.Image = "rbxassetid://6031091000"; openBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15); Instance.new("UICorner", openBtn)
+local menuContent = Instance.new("Frame", main)
+menuContent.Size = UDim2.new(1, 0, 1, -35); menuContent.Position = UDim2.new(0, 0, 0, 35); menuContent.BackgroundTransparency = 1
+local layout = Instance.new("UIListLayout", menuContent)
+layout.Padding = UDim.new(0, 4); layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
-minBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false; openBtn.Visible = true end)
-openBtn.MouseButton1Click:Connect(function() mainFrame.Visible = true; openBtn.Visible = false end)
-killBtn.MouseButton1Click:Connect(function() if fovCircle then fovCircle:Remove() end for _, l in pairs(espCache) do for _, line in pairs(l) do line:Remove() end end screenGui:Destroy() end)
-
--- HÀM TẠO NÚT
-local function createBtn(yPos, text, status, callback)
-    local btn = Instance.new("TextButton", mainFrame); btn.Size = UDim2.new(0.9, 0, 0, 22); btn.Position = UDim2.new(0.05, 0, 0, yPos); btn.Font = "GothamMedium"; btn.TextSize = 9; btn.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-    local function updateColor(isOn)
-        btn.BackgroundColor3 = isOn and Color3.fromRGB(0, 100, 180) or Color3.fromRGB(30, 30, 35)
-        btn.Text = text .. (isOn and ": ON" or ": OFF")
-    end
-    updateColor(status)
-    btn.MouseButton1Click:Connect(function() updateColor(callback()) end)
+local function makeBtn(txt, start, cb)
+    local b = Instance.new("TextButton", menuContent)
+    b.Size = UDim2.new(0.9, 0, 0, 22); b.Font = "GothamBold"; b.TextSize = 9; b.TextColor3 = Color3.new(1, 1, 1)
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 10)
+    local function v(val) b.Text = txt .. (val and ": ON" or ": OFF"); b.BackgroundColor3 = val and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(28, 28, 28) end
+    v(start); b.MouseButton1Click:Connect(function() v(cb()) end)
 end
 
--- HÀM TẠO SLIDER
-local function createSlider(yPos, label, min, max, default, callback)
-    local box = Instance.new("Frame", mainFrame); box.Size = UDim2.new(0.94, 0, 0, 30); box.Position = UDim2.new(0.03, 0, 0, yPos); box.BackgroundTransparency = 1
-    local txt = Instance.new("TextLabel", box); txt.Size = UDim2.new(1, 0, 0, 12); txt.Text = label..": "..default; txt.TextColor3 = Color3.new(0.8,0.8,0.8); txt.BackgroundTransparency = 1; txt.TextSize = 8; txt.Font = "Gotham"
-    local bar = Instance.new("Frame", box); bar.Size = UDim2.new(1, 0, 0, 5); bar.Position = UDim2.new(0, 0, 0, 16); bar.BackgroundColor3 = Color3.fromRGB(35, 35, 40); Instance.new("UICorner", bar)
-    local fill = Instance.new("Frame", bar); fill.Size = UDim2.new((default-min)/(max-min), 0, 1, 0); fill.BackgroundColor3 = Color3.fromRGB(0, 180, 255); Instance.new("UICorner", fill)
-    local knob = Instance.new("Frame", bar); knob.Size = UDim2.new(0, 10, 0, 10); knob.Position = UDim2.new((default-min)/(max-min), 0, 0.5, 0); knob.AnchorPoint = Vector2.new(0.5, 0.5); knob.BackgroundColor3 = Color3.new(1,1,1); Instance.new("UICorner", knob)
+-- PHẦN 1: CÁC NÚT BẬT TẮT (NẰM TRÊN)
+makeBtn("AIMBOT", aimbotEnabled, function() aimbotEnabled = not aimbotEnabled; return aimbotEnabled end)
+makeBtn("ESP PLAYER", espEnabled, function() espEnabled = not espEnabled; return espEnabled end)
+makeBtn("POV CIRCLE", showPov, function() showPov = not showPov; return showPov end)
+makeBtn("TEAM CHECK", smartCheck, function() smartCheck = not smartCheck; return smartCheck end)
 
+local modeBtn = Instance.new("TextButton", menuContent)
+modeBtn.Size = UDim2.new(0.9, 0, 0, 22); modeBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35); modeBtn.TextColor3 = Color3.new(1, 1, 1); modeBtn.Text = "MODE: ATTACK"; modeBtn.Font = "GothamBold"; modeBtn.TextSize = 9; Instance.new("UICorner", modeBtn).CornerRadius = UDim.new(0, 10)
+modeBtn.MouseButton1Click:Connect(function() aimMode = (aimMode == "OnAttack" and "Always" or "OnAttack"); modeBtn.Text = "MODE: " .. (aimMode == "OnAttack" and "ATTACK" or "ALWAYS") end)
+
+-- PHẦN 2: THANH TRƯỢT (NẰM DƯỚI CÙNG)
+local function makeSlider(label, min, max, def, cb)
+    local f = Instance.new("Frame", menuContent); f.Size = UDim2.new(0.9, 0, 0, 32); f.BackgroundTransparency = 1
+    local t = Instance.new("TextLabel", f); t.Size = UDim2.new(1, 0, 0, 10); t.Text = label..": "..def; t.TextColor3 = Color3.new(1,1,1); t.BackgroundTransparency = 1; t.TextSize = 8; t.Font = "Gotham"
+    local b = Instance.new("Frame", f); b.Size = UDim2.new(1, 0, 0, 3); b.Position = UDim2.new(0, 0, 0, 18); b.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+    local fill = Instance.new("Frame", b); fill.Size = UDim2.new((def-min)/(max-min), 0, 1, 0); fill.BackgroundColor3 = Color3.new(1, 1, 1)
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    local knob = Instance.new("Frame", fill); knob.Size = UDim2.new(0, 10, 0, 10); knob.Position = UDim2.new(1, 0, 0.5, 0); knob.AnchorPoint = Vector2.new(0.5, 0.5); knob.BackgroundColor3 = Color3.new(1, 1, 1)
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
     local dragging = false
-    local function update(input)
-        local posPercent = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-        knob.Position = UDim2.new(posPercent, 0, 0.5, 0); fill.Size = UDim2.new(posPercent, 0, 1, 0)
-        local value = math.floor(min + (posPercent * (max - min))); txt.Text = label..": "..value; callback(value)
+    local function update()
+        local p = math.clamp((UIS:GetMouseLocation().X - b.AbsolutePosition.X) / b.AbsoluteSize.X, 0, 1)
+        fill.Size = UDim2.new(p, 0, 1, 0); local val = math.floor(min + (p * (max-min))); t.Text = label..": "..val; cb(val)
     end
-    box.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true; isDraggingSlider = true; update(input) end end)
-    UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then update(input) end end)
-    UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false; isDraggingSlider = false end end)
+    f.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = true; update() end end)
+    UIS.InputChanged:Connect(function(i) if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then update() end end)
+    UIS.InputEnded:Connect(function() dragging = false end)
 end
 
--- KHỞI TẠO (SẮP XẾP LẠI KHOẢNG CÁCH)
-createBtn(28, "AIMBOT", aimbotEnabled, function() aimbotEnabled = not aimbotEnabled; return aimbotEnabled end)
-createBtn(52, "ESP", espEnabled, function() espEnabled = not espEnabled; return espEnabled end)
-createBtn(76, "FOV", showPov, function() showPov = not showPov; return showPov end)
+makeSlider("POV RADIUS", 10, 600, 180, function(v) fovRadius = v end)
+makeSlider("WALK SPEED", 16, 250, 16, function(v) currentSpeed = v end)
 
-local modeBtn = Instance.new("TextButton", mainFrame); modeBtn.Size = UDim2.new(0.9, 0, 0, 22); modeBtn.Position = UDim2.new(0.05, 0, 0, 100); modeBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 60); modeBtn.TextColor3 = Color3.new(1,1,1); modeBtn.Font = "GothamMedium"; modeBtn.TextSize = 9; modeBtn.Text = "MODE: ATTACK"; Instance.new("UICorner", modeBtn)
-modeBtn.MouseButton1Click:Connect(function()
-    aimMode = (aimMode == "OnAttack" and "Always" or "OnAttack")
-    modeBtn.Text = "MODE: "..(aimMode == "OnAttack" and "ATTACK" or "ALWAYS")
-    modeBtn.BackgroundColor3 = (aimMode == "OnAttack" and Color3.fromRGB(40, 30, 60) or Color3.fromRGB(80, 20, 20))
+-- 4. LOGIC CORE
+minBtn.MouseButton1Click:Connect(function()
+    menuContent.Visible = not menuContent.Visible
+    main:TweenSize(menuContent.Visible and UDim2.new(0, 155, 0, 265) or UDim2.new(0, 155, 0, 32), "Out", "Quad", 0.15, true)
 end)
-
-createSlider(128, "RADIUS", 0, 500, 180, function(v) fovRadius = v end)
-createSlider(162, "SPEED", 16, 200, 16, function(v) currentSpeed = v end) -- Min 16
-
--- LOGIC VẬN HÀNH (DƯỚI ĐÂY)
-UserInputService.InputBegan:Connect(function(i, g) if not g and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then isShooting = true end end)
-UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then isShooting = false end end)
-
-local function getTarget()
-    local t, m = nil, fovRadius
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character.Humanoid.Health > 0 then
-            local pos, screen = Camera:WorldToViewportPoint(p.Character.Head.Position)
-            if screen then
-                local mag = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
-                if mag < m then m = mag; t = p.Character.Head end
-            end
-        end
-    end
-    return t
-end
+clsBtn.MouseButton1Click:Connect(function() sg:Destroy(); fovCircle:Remove() end)
 
 RunService.RenderStepped:Connect(function()
+    if aimbotEnabled then
+        local isShooting = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
+        if (aimMode == "OnAttack" and isShooting) or aimMode == "Always" then
+            local target, dist = nil, fovRadius
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and isTarget(p) and p.Character and p.Character:FindFirstChild("Head") and p.Character.Humanoid.Health > 0 then
+                    local pos, on = Camera:WorldToViewportPoint(p.Character.Head.Position)
+                    if on then
+                        local mag = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
+                        if mag < dist then dist = mag; target = p.Character.Head end
+                    end
+                end
+            end
+            if target then Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, target.Position), STICKY_SNAP_SPEED) end
+        end
+    end
     updateEsp()
     if fovCircle then fovCircle.Visible = showPov; fovCircle.Radius = fovRadius; fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2) end
-    if aimbotEnabled and (aimMode == "Always" or (aimMode == "OnAttack" and isShooting)) then
-        local t = getTarget()
-        if t then Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, t.Position), FIXED_SNAP_SPEED) end
-    end
-    pcall(function() if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then LocalPlayer.Character.Humanoid.WalkSpeed = currentSpeed end end)
+    pcall(function() LocalPlayer.Character.Humanoid.WalkSpeed = currentSpeed end)
 end)
 
-local function drag(o)
-    local dragging, inputStart, startPos
-    o.InputBegan:Connect(function(i) if (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) and not isDraggingSlider then dragging = true; inputStart = i.Position; startPos = o.Position end end)
-    UserInputService.InputChanged:Connect(function(i) if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then local delta = i.Position - inputStart; o.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
-    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
-end
-drag(mainFrame); drag(openBtn)
-
-for _, p in ipairs(Players:GetPlayers()) do createEsp(p) end
-Players.PlayerAdded:Connect(createEsp)
+-- DRAG
+local dToggle, dStart, sPos
+titleBar.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dToggle = true; dStart = i.Position; sPos = main.Position end end)
+UIS.InputChanged:Connect(function(i) if dToggle and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then 
+    local delta = i.Position - dStart
+    main.Position = UDim2.new(sPos.X.Scale, sPos.X.Offset + delta.X, sPos.Y.Scale, sPos.Y.Offset + delta.Y)
+end end)
+UIS.InputEnded:Connect(function() dToggle = false end)
