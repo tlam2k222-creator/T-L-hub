@@ -1,8 +1,8 @@
 --[[ 
-    TLAM HUB - V25 FINAL REBORN (ESP FIXED)
-    - Fix: ESP Player hoạt động 100% (Line & Corner Box).
-    - Aim Smoothness: 0.8 (Chuẩn nhất).
-    - UI: Thu hẹp, bo tròn, nút tròn slider, lock camera khi kéo.
+    TLAM HUB - V25 UNIVERSAL COMPATIBILITY
+    - Fix: Auto-switch between CoreGui and PlayerGui
+    - Aim: Precision Hybrid (0.4)
+    - UI: Micro Cyber Roll-up
 ]]
 
 local Players = game:GetService("Players")
@@ -10,128 +10,120 @@ local LP = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RS = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
+local TS = game:GetService("TweenService")
 local CG = game:GetService("CoreGui")
 
-if _G.TlamLoaded then pcall(function() CG.TLAM_V25:Destroy() end) end
+-- KIỂM TRA ĐIỂM ĐẶT MENU (Sửa lỗi không hiện menu)
+local ParentUI
+local success, err = pcall(function()
+    ParentUI = (gethui and gethui()) or CG:FindFirstChild("RobloxGui") or CG
+end)
+if not success then ParentUI = LP:WaitForChild("PlayerGui") end
+
+-- Xóa menu cũ nếu đã tồn tại
+if _G.TlamLoaded then 
+    for _, v in pairs(ParentUI:GetChildren()) do 
+        if v.Name == "TLAM_V25" then v:Destroy() end 
+    end 
+end
 _G.TlamLoaded = true
 
 local aimEnabled, espEnabled, showPov, teamCheck, wallCheck = false, false, false, true, true
-local fovRadius, walkSpeed = 150, 16
+local fovRadius, walkSpeed = 120, 16
 local playerEsp = {}
-local AIM_SMOOTHNESS = 0.8
+local AIM_SMOOTHNESS = 0.4
 
 -- 1. POV CIRCLE
 local fovC = Drawing.new("Circle")
-fovC.Thickness = 1.5; fovC.NumSides = 100; fovC.Color = Color3.new(1,1,1)
-fovC.Visible = false; fovC.Filled = false; fovC.Transparency = 0.8
+fovC.Thickness = 1; fovC.NumSides = 60; fovC.Color = Color3.new(1,1,1); fovC.Visible = false; fovC.Transparency = 0.7
 
--- 2. ESP DRAWING FUNCTION
+-- 2. ESP SYSTEM
 local function createEsp(p)
-    local e = {
-        Line = Drawing.new("Line"),
-        Corners = {}
-    }
-    e.Line.Thickness = 1; e.Line.Color = Color3.new(1,1,1); e.Line.Transparency = 0.8
+    if playerEsp[p] then return end
+    local e = {Line = Drawing.new("Line"), Corners = {}}
+    e.Line.Thickness = 1; e.Line.Color = Color3.new(1, 1, 1)
     for i = 1, 8 do
-        local l = Drawing.new("Line")
-        l.Thickness = 1.5; l.Color = Color3.new(1,1,1); l.Visible = false
+        local l = Drawing.new("Line"); l.Thickness = 1.2; l.Color = Color3.new(1, 1, 1); l.Visible = false
         table.insert(e.Corners, l)
     end
     playerEsp[p] = e
 end
 
-local function removeEsp(p)
-    if playerEsp[p] then
-        pcall(function()
-            playerEsp[p].Line:Remove()
-            for _, l in pairs(playerEsp[p].Corners) do l:Remove() end
-        end)
-        playerEsp[p] = nil
-    end
-end
-Players.PlayerRemoving:Connect(removeEsp)
-
--- 3. WALL CHECK & AIM LOGIC
-local function isVisible(part)
-    if not wallCheck then return true end
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {LP.Character, part.Parent}
-    local res = workspace:Raycast(Camera.CFrame.Position, part.Position - Camera.CFrame.Position, params)
-    return res == nil
-end
-
--- 4. UI CONSTRUCTION
-local sg = Instance.new("ScreenGui", CG); sg.Name = "TLAM_V25"
+-- 3. UI CONSTRUCTION
+local sg = Instance.new("ScreenGui"); sg.Name = "TLAM_V25"; sg.ResetOnSpawn = false; sg.Parent = ParentUI
 local main = Instance.new("Frame", sg)
-main.Size = UDim2.new(0, 140, 0, 230); main.Position = UDim2.new(0.5,0,0.5,0); main.AnchorPoint = Vector2.new(0.5,0.5)
-main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
-Instance.new("UIStroke", main).Color = Color3.new(1,1,1)
+main.Size = UDim2.new(0, 130, 0, 215) -- Chiều cao thu gọn tối đa
+main.Position = UDim2.new(0.5, 0, 0.4, 0); main.AnchorPoint = Vector2.new(0.5, 0)
+main.BackgroundColor3 = Color3.fromRGB(12, 12, 12); main.BorderSizePixel = 0; main.Active = true; main.ClipsDescendants = true
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 15)
+local st = Instance.new("UIStroke", main); st.Color = Color3.new(0.8, 0.8, 0.8); st.Thickness = 1.5
 
-local title = Instance.new("Frame", main); title.Size = UDim2.new(1,0,0,28); title.BackgroundTransparency = 1
-local tTxt = Instance.new("TextLabel", title); tTxt.Size = UDim2.new(1,0,1,0); tTxt.Text = "TLAM V25 FINAL"; tTxt.TextColor3 = Color3.new(1,1,1); tTxt.Font = "GothamBold"; tTxt.TextSize = 8; tTxt.BackgroundTransparency = 1
-local minBtn = Instance.new("TextButton", title); minBtn.Position = UDim2.new(0,8,0,4); minBtn.Size = UDim2.new(0,20,0,20); minBtn.Text = "-"; minBtn.TextColor3 = Color3.new(1,1,1); minBtn.BackgroundTransparency = 1; minBtn.TextSize = 22
-local clsBtn = Instance.new("TextButton", title); clsBtn.Position = UDim2.new(1,-28,0,4); clsBtn.Size = UDim2.new(0,20,0,20); clsBtn.Text = "X"; clsBtn.TextColor3 = Color3.fromRGB(255,80,80); clsBtn.BackgroundTransparency = 1; clsBtn.Font = "GothamBold"
+local title = Instance.new("Frame", main); title.Size = UDim2.new(1, 0, 0, 28); title.BackgroundTransparency = 1
+local tTxt = Instance.new("TextLabel", title); tTxt.Size = UDim2.new(1, 0, 1, 0); tTxt.Text = "TLAM V25 FIX"; tTxt.TextColor3 = Color3.new(1,1,1); tTxt.Font = "GothamBold"; tTxt.TextSize = 9; tTxt.BackgroundTransparency = 1
+local minBtn = Instance.new("TextButton", title); minBtn.Position = UDim2.new(0, 10, 0, 4); minBtn.Size = UDim2.new(0, 20, 0, 20); minBtn.Text = "-"; minBtn.TextColor3 = Color3.new(1,1,1); minBtn.BackgroundTransparency = 1
+local clsBtn = Instance.new("TextButton", title); clsBtn.Position = UDim2.new(1, -28, 0, 4); clsBtn.Size = UDim2.new(0, 20, 0, 20); clsBtn.Text = "×"; clsBtn.TextColor3 = Color3.fromRGB(255, 60, 60); clsBtn.BackgroundTransparency = 1
 
-local content = Instance.new("Frame", main); content.Size = UDim2.new(1,0,1,-30); content.Position = UDim2.new(0,0,0,30); content.BackgroundTransparency = 1
-local lay = Instance.new("UIListLayout", content); lay.Padding = UDim.new(0,4); lay.HorizontalAlignment = "Center"
+local content = Instance.new("Frame", main); content.Size = UDim2.new(1, 0, 1, -30); content.Position = UDim2.new(0, 0, 0, 30); content.BackgroundTransparency = 1
+local lay = Instance.new("UIListLayout", content); lay.Padding = UDim.new(0, 4); lay.HorizontalAlignment = "Center"
 
 local function mkBtn(txt, val, cb)
     local b = Instance.new("TextButton", content)
-    b.Size = UDim2.new(0.92,0,0,20); b.Font = "GothamBold"; b.TextSize = 8; b.TextColor3 = Color3.new(1,1,1)
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0,10)
-    local function upd(v) b.Text = txt..": "..(v and "ON" or "OFF"); b.BackgroundColor3 = v and Color3.fromRGB(60,60,60) or Color3.fromRGB(30,30,30) end
+    b.Size = UDim2.new(0.85, 0, 0, 18); b.Font = "GothamBold"; b.TextSize = 7; b.TextColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+    local function upd(v) b.Text = txt..": "..(v and "ON" or "OFF"); b.BackgroundColor3 = v and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(25, 25, 25) end
     upd(val); b.MouseButton1Click:Connect(function() val = cb(); upd(val) end)
 end
 
-mkBtn("AIMBOT", aimEnabled, function() aimEnabled = not aimEnabled; return aimEnabled end)
-mkBtn("ESP PLAYER", espEnabled, function() espEnabled = not espEnabled; return espEnabled end)
-mkBtn("POV CIRCLE", showPov, function() showPov = not showPov; return showPov end)
-mkBtn("TEAM CHECK", teamCheck, function() teamCheck = not teamCheck; return teamCheck end)
-mkBtn("WALL CHECK", wallCheck, function() wallCheck = not wallCheck; return wallCheck end)
-
 local function mkSld(label, min, max, def, cb)
-    local f = Instance.new("Frame", content); f.Size = UDim2.new(0.9,0,0,30); f.BackgroundTransparency = 1
-    local t = Instance.new("TextLabel", f); t.Size = UDim2.new(1,0,0,10); t.Text = label..": "..def; t.TextColor3 = Color3.new(1,1,1); t.TextSize = 7; t.Font = "GothamBold"; t.BackgroundTransparency = 1
-    local b = Instance.new("Frame", f); b.Size = UDim2.new(1,0,0,3); b.Position = UDim2.new(0,0,0,18); b.BackgroundColor3 = Color3.fromRGB(45,45,45); Instance.new("UICorner", b)
-    local fill = Instance.new("Frame", b); fill.Size = UDim2.new((def-min)/(max-min),0,1,0); fill.BackgroundColor3 = Color3.new(1,1,1); Instance.new("UICorner", fill)
-    local knob = Instance.new("Frame", fill); knob.Size = UDim2.new(0, 10, 0, 10); knob.Position = UDim2.new(1, 0, 0.5, 0); knob.AnchorPoint = Vector2.new(0.5, 0.5); knob.BackgroundColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", knob)
-    local dragging = false
-    local function update()
-        local p = math.clamp((UIS:GetMouseLocation().X - b.AbsolutePosition.X)/b.AbsoluteSize.X, 0, 1)
-        fill.Size = UDim2.new(p,0,1,0); local v = math.floor(min+(p*(max-min))); t.Text = label..": "..v; cb(v)
-    end
-    f.InputBegan:Connect(function(i) if i.UserInputType.Name == "MouseButton1" or i.UserInputType.Name == "Touch" then dragging = true; update() end end)
-    UIS.InputChanged:Connect(function(i) if dragging and (i.UserInputType.Name == "MouseMovement" or i.UserInputType.Name == "Touch") then update() end end)
-    UIS.InputEnded:Connect(function() dragging = false end)
+    local sFrame = Instance.new("Frame", content); sFrame.Size = UDim2.new(0.85, 0, 0, 26); sFrame.BackgroundTransparency = 1
+    local sTxt = Instance.new("TextLabel", sFrame); sTxt.Size = UDim2.new(1, 0, 0, 10); sTxt.Text = label..": "..def; sTxt.TextColor3 = Color3.new(1,1,1); sTxt.Font = "GothamBold"; sTxt.TextSize = 6.5; sTxt.BackgroundTransparency = 1
+    local bar = Instance.new("Frame", sFrame); bar.Size = UDim2.new(1, 0, 0, 3); bar.Position = UDim2.new(0, 0, 0, 16); bar.BackgroundColor3 = Color3.fromRGB(35, 35, 35); Instance.new("UICorner", bar)
+    local fill = Instance.new("Frame", bar); fill.Size = UDim2.new((def-min)/(max-min), 0, 1, 0); fill.BackgroundColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", fill)
+    local knob = Instance.new("Frame", fill); knob.Size = UDim2.new(0, 8, 0, 8); knob.Position = UDim2.new(1, 0, 0.5, 0); knob.AnchorPoint = Vector2.new(0.5, 0.5); knob.BackgroundColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", knob)
+    local moving = false
+    sFrame.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then moving = true end end)
+    UIS.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then moving = false end end)
+    RS.RenderStepped:Connect(function() if moving then local p = math.clamp((UIS:GetMouseLocation().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1) fill.Size = UDim2.new(p, 0, 1, 0) local v = math.floor(min + (max-min)*p) sTxt.Text = label..": "..v cb(v) end end)
 end
 
-mkSld("POV RADIUS", 10, 600, 150, function(v) fovRadius = v end)
-mkSld("WALK SPEED", 16, 250, 16, function(v) walkSpeed = v end)
+mkBtn("AIMBOT", aimEnabled, function() aimEnabled = not aimEnabled return aimEnabled end)
+mkBtn("ESP", espEnabled, function() espEnabled = not espEnabled return espEnabled end)
+mkBtn("POV", showPov, function() showPov = not showPov return showPov end)
+mkBtn("TEAM", teamCheck, function() teamCheck = not teamCheck return teamCheck end)
+mkBtn("WALL", wallCheck, function() wallCheck = not wallCheck return wallCheck end)
+mkSld("RAD", 10, 400, 120, function(v) fovRadius = v end)
+mkSld("SPD", 16, 200, 16, function(v) walkSpeed = v end)
 
--- 5. MAIN LOOP (ESP & AIM)
+-- 4. SMOOTH ROLL-UP & DRAG
+local mini = false
+minBtn.MouseButton1Click:Connect(function() 
+    mini = not mini 
+    TS:Create(main, TweenInfo.new(0.4, Enum.EasingStyle.Quart), {Size = mini and UDim2.new(0, 130, 0, 28) or UDim2.new(0, 130, 0, 215)}):Play() 
+end)
+clsBtn.MouseButton1Click:Connect(function() _G.TlamLoaded = false; fovC:Remove(); for _, e in pairs(playerEsp) do e.Line:Remove(); for _, l in pairs(e.Corners) do l:Remove() end end; sg:Destroy() end)
+
+local d, dS, sP
+title.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then d = true dS = i.Position sP = main.Position end end)
+UIS.InputChanged:Connect(function(i) if d and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then local delta = i.Position - dS; main.Position = UDim2.new(sP.X.Scale, sP.X.Offset + delta.X, sP.Y.Scale, sP.Y.Offset + delta.Y) end end)
+UIS.InputEnded:Connect(function() d = false end)
+
+-- 5. RENDER LOOP
 RS.RenderStepped:Connect(function()
-    local vp = Camera.ViewportSize
-    local center = Vector2.new(vp.X/2, vp.Y/2)
-    fovC.Visible = showPov; fovC.Radius = fovRadius; fovC.Position = center
+    local screenCenter = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    fovC.Visible = showPov; fovC.Radius = fovRadius; fovC.Position = screenCenter 
 
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LP then
-            local char = p.Character
-            if espEnabled and char and char:FindFirstChild("HumanoidRootPart") and char.Humanoid.Health > 0 and (not teamCheck or p.Team ~= LP.Team) then
-                if not playerEsp[p] then createEsp(p) end
-                local root = char.HumanoidRootPart
-                local pos, on = Camera:WorldToViewportPoint(root.Position)
-                local e = playerEsp[p]
+            local e = playerEsp[p]; if not e then createEsp(p) e = playerEsp[p] end
+            local char = p.Character; local isVis = false
+            if espEnabled and (not teamCheck or p.Team ~= LP.Team) and char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char.Humanoid.Health > 0 then
+                local root = char.HumanoidRootPart; local pos, on = Camera:WorldToViewportPoint(root.Position)
                 if on then
-                    local hPos = Camera:WorldToViewportPoint(char.Head.Position + Vector3.new(0,0.6,0))
-                    local lPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0,3,0))
-                    local h = math.abs(hPos.Y - lPos.Y); local w = h/1.5
-                    local x, y = pos.X-w/2, pos.Y-h/2
-                    -- DRAW LINE
-                    e.Line.Visible = true; e.Line.From = Vector2.new(vp.X/2, vp.Y); e.Line.To = Vector2.new(pos.X, y+h)
-                    -- DRAW CORNERS
+                    isVis = true
+                    local hP = Camera:WorldToViewportPoint(char.Head.Position + Vector3.new(0, 0.9, 0))
+                    local bP = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.2, 0))
+                    local h = math.abs(hP.Y - bP.Y); local w = h/1.6; local x, y = pos.X-w/2, pos.Y-h/2
+                    e.Line.Visible = true; e.Line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y); e.Line.To = Vector2.new(pos.X, pos.Y + (h/2))
                     for _,l in pairs(e.Corners) do l.Visible = true end
                     e.Corners[1].From = Vector2.new(x,y); e.Corners[1].To = Vector2.new(x+w/4,y)
                     e.Corners[2].From = Vector2.new(x,y); e.Corners[2].To = Vector2.new(x,y+h/4)
@@ -141,40 +133,30 @@ RS.RenderStepped:Connect(function()
                     e.Corners[6].From = Vector2.new(x,y+h); e.Corners[6].To = Vector2.new(x,y+h-h/4)
                     e.Corners[7].From = Vector2.new(x+w,y+h); e.Corners[7].To = Vector2.new(x+w-w/4,y+h)
                     e.Corners[8].From = Vector2.new(x+w,y+h); e.Corners[8].To = Vector2.new(x+w,y+h-h/4)
-                else
-                    e.Line.Visible = false; for _,l in pairs(e.Corners) do l.Visible = false end
                 end
-            elseif playerEsp[p] then
-                playerEsp[p].Line.Visible = false; for _,l in pairs(playerEsp[p].Corners) do l.Visible = false end
             end
+            if not isVis and e then e.Line.Visible = false; for _,l in pairs(e.Corners) do l.Visible = false end end
         end
     end
-
-    if aimEnabled and (UIS:IsMouseButtonPressed(0) or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)) then
+    
+    if aimEnabled and UIS:IsMouseButtonPressed(0) then
         local target = nil; local dist = fovRadius
         for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LP and p.Character and p.Character:FindFirstChild("Head") and p.Character.Humanoid.Health > 0 and (not teamCheck or p.Team ~= LP.Team) then
-                local head = p.Character.Head
-                local pos, on = Camera:WorldToViewportPoint(head.Position)
-                if on and isVisible(head) then
-                    local m = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                    if m < dist then target = head; dist = m end
+            if p ~= LP and p.Character and p.Character:FindFirstChild("Head") and (not teamCheck or p.Team ~= LP.Team) then
+                if p.Character.Humanoid.Health > 0 then
+                    local head = p.Character.Head
+                    local pos, on = Camera:WorldToViewportPoint(head.Position)
+                    if on and (not wallCheck or (function()
+                        local rP = RaycastParams.new(); rP.FilterType = Enum.RaycastFilterType.Exclude; rP.FilterDescendantsInstances = {LP.Character, p.Character}
+                        return not workspace:Raycast(Camera.CFrame.Position, (head.Position - Camera.CFrame.Position), rP)
+                    end)()) then
+                        local m = (Vector2.new(pos.X, pos.Y) - screenCenter).Magnitude
+                        if m < dist then target = head; dist = m end
+                    end
                 end
             end
         end
-        if target then
-            local pred = target.Position + (target.Parent.HumanoidRootPart.Velocity * 0.01)
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, pred), AIM_SMOOTHNESS)
-        end
+        if target then Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, target.Position), AIM_SMOOTHNESS) end
     end
     pcall(function() LP.Character.Humanoid.WalkSpeed = walkSpeed end)
 end)
-
-minBtn.MouseButton1Click:Connect(function()
-    content.Visible = not content.Visible
-    main:TweenSize(content.Visible and UDim2.new(0, 140, 0, 230) or UDim2.new(0, 140, 0, 28), "Out", "Quad", 0.1, true)
-end)
-clsBtn.MouseButton1Click:Connect(function() _G.TlamLoaded = false; fovC:Remove(); for _,e in pairs(playerEsp) do e.Line:Remove(); for _,l in pairs(e.Corners) do l:Remove() end end; sg:Destroy() end)
-local d, ds, sp; title.InputBegan:Connect(function(i) if i.UserInputType.Name == "MouseButton1" or i.UserInputType.Name == "Touch" then d = true; ds = i.Position; sp = main.Position end end)
-UIS.InputChanged:Connect(function(i) if d and (i.UserInputType.Name == "MouseMovement" or i.UserInputType.Name == "Touch") then local del = i.Position - ds; main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + del.X, sp.Y.Scale, sp.Y.Offset + del.Y) end end)
-UIS.InputEnded:Connect(function() d = false end)
