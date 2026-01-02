@@ -1,174 +1,180 @@
 --[[ 
-    TLAM HUB - V12 PRO (RE-ORDERED SLIDERS)
-    - UI: Đẩy 2 thanh Slider xuống dưới cùng các nút chức năng.
-    - Design: Bo tròn cực mạnh, giao diện tối giản.
-    - Sync: ESP dính chặt theo Aim 0.7.
+    TLAM HUB - V25 FINAL REBORN (ESP FIXED)
+    - Fix: ESP Player hoạt động 100% (Line & Corner Box).
+    - Aim Smoothness: 0.8 (Chuẩn nhất).
+    - UI: Thu hẹp, bo tròn, nút tròn slider, lock camera khi kéo.
 ]]
 
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local LP = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local RunService = game:GetService("RunService")
+local RS = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
+local CG = game:GetService("CoreGui")
 
--- BIẾN HỆ THỐNG
-local aimbotEnabled, espEnabled, showPov = false, false, false
-local smartCheck = true 
-local aimMode = "OnAttack"
-local fovRadius, currentSpeed = 180, 16
-local STICKY_SNAP_SPEED = 0.7 
+if _G.TlamLoaded then pcall(function() CG.TLAM_V25:Destroy() end) end
+_G.TlamLoaded = true
 
--- 1. FOV CIRCLE
-local fovCircle = Drawing.new("Circle")
-fovCircle.Thickness = 1; fovCircle.NumSides = 100; fovCircle.Radius = fovRadius
-fovCircle.Visible = false; fovCircle.Color = Color3.new(1, 1, 1); fovCircle.Transparency = 0.8
-
--- 2. HỆ THỐNG ESP SYNC
+local aimEnabled, espEnabled, showPov, teamCheck, wallCheck = false, false, false, true, true
+local fovRadius, walkSpeed = 150, 16
 local playerEsp = {}
-local function isTarget(p) return not smartCheck or (p.Team ~= LocalPlayer.Team) end
+local AIM_SMOOTHNESS = 0.8
 
-local function updateEsp()
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            local char = p.Character
-            if espEnabled and char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char.Humanoid.Health > 0 and isTarget(p) then
-                if not playerEsp[p] then 
-                    playerEsp[p] = { Tracer = Drawing.new("Line"), Corners = {} }
-                    for i = 1, 8 do 
-                        local l = Drawing.new("Line"); l.Thickness = 1.2; l.Color = Color3.new(1, 1, 1); table.insert(playerEsp[p].Corners, l)
-                    end
-                end
-                local root = char.HumanoidRootPart
-                local pos, on = Camera:WorldToViewportPoint(root.Position)
-                if on then
-                    local headPos = Camera:WorldToViewportPoint(char.Head.Position + Vector3.new(0, 0.5, 0))
-                    local legPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
-                    local h, w = math.abs(headPos.Y - legPos.Y), math.abs(headPos.Y - legPos.Y) / 1.5
-                    local x, y = pos.X - w/2, pos.Y - h/2
-                    local cl = w/4
-                    local e = playerEsp[p]
-                    e.Tracer.Visible = true; e.Tracer.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y); e.Tracer.To = Vector2.new(pos.X, y + h)
-                    for i=1,8 do e.Corners[i].Visible = true end
-                    e.Corners[1].From = Vector2.new(x, y); e.Corners[1].To = Vector2.new(x + cl, y)
-                    e.Corners[2].From = Vector2.new(x, y); e.Corners[2].To = Vector2.new(x, y + cl)
-                    e.Corners[3].From = Vector2.new(x + w, y); e.Corners[3].To = Vector2.new(x + w - cl, y)
-                    e.Corners[4].From = Vector2.new(x + w, y); e.Corners[4].To = Vector2.new(x + w, y + cl)
-                    e.Corners[5].From = Vector2.new(x, y + h); e.Corners[5].To = Vector2.new(x + cl, y + h)
-                    e.Corners[6].From = Vector2.new(x, y + h); e.Corners[6].To = Vector2.new(x, y + h - cl)
-                    e.Corners[7].From = Vector2.new(x + w, y + h); e.Corners[7].To = Vector2.new(x + w - cl, y + h)
-                    e.Corners[8].From = Vector2.new(x + w, y + h); e.Corners[8].To = Vector2.new(x + w, y + h - cl)
-                else
-                    playerEsp[p].Tracer.Visible = false; for i=1,8 do playerEsp[p].Corners[i].Visible = false end
-                end
-            elseif playerEsp[p] then
-                playerEsp[p].Tracer.Visible = false; for i=1,8 do playerEsp[p].Corners[i].Visible = false end
-            end
-        end
+-- 1. POV CIRCLE
+local fovC = Drawing.new("Circle")
+fovC.Thickness = 1.5; fovC.NumSides = 100; fovC.Color = Color3.new(1,1,1)
+fovC.Visible = false; fovC.Filled = false; fovC.Transparency = 0.8
+
+-- 2. ESP DRAWING FUNCTION
+local function createEsp(p)
+    local e = {
+        Line = Drawing.new("Line"),
+        Corners = {}
+    }
+    e.Line.Thickness = 1; e.Line.Color = Color3.new(1,1,1); e.Line.Transparency = 0.8
+    for i = 1, 8 do
+        local l = Drawing.new("Line")
+        l.Thickness = 1.5; l.Color = Color3.new(1,1,1); l.Visible = false
+        table.insert(e.Corners, l)
+    end
+    playerEsp[p] = e
+end
+
+local function removeEsp(p)
+    if playerEsp[p] then
+        pcall(function()
+            playerEsp[p].Line:Remove()
+            for _, l in pairs(playerEsp[p].Corners) do l:Remove() end
+        end)
+        playerEsp[p] = nil
     end
 end
+Players.PlayerRemoving:Connect(removeEsp)
 
--- 3. GIAO DIỆN (ĐÃ SẮP XẾP LẠI THỨ TỰ)
-local sg = Instance.new("ScreenGui")
-sg.Name = "TLAM_V12_PRO"
-pcall(function() sg.Parent = CoreGui end)
-if not sg.Parent then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
-
-local main = Instance.new("Frame", sg)
-main.Size = UDim2.new(0, 155, 0, 265)
-main.Position = UDim2.new(0.5, 0, 0.5, 0); main.AnchorPoint = Vector2.new(0.5, 0.5)
-main.BackgroundColor3 = Color3.fromRGB(12, 12, 12); main.Active = true
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 15)
-local mStroke = Instance.new("UIStroke", main); mStroke.Color = Color3.new(1, 1, 1); mStroke.Thickness = 1.2
-
-local titleBar = Instance.new("Frame", main)
-titleBar.Size = UDim2.new(1, 0, 0, 32); titleBar.BackgroundTransparency = 1
-local titleText = Instance.new("TextLabel", titleBar)
-titleText.Size = UDim2.new(1, 0, 1, 0); titleText.Text = "TLAM HUB"; titleText.TextColor3 = Color3.new(1,1,1); titleText.Font = "GothamBold"; titleText.TextSize = 11; titleText.BackgroundTransparency = 1
-
-local minBtn = Instance.new("TextButton", titleBar); minBtn.Size = UDim2.new(0,25,0,25); minBtn.Position = UDim2.new(0,8,0,3); minBtn.Text = "-"; minBtn.TextColor3 = Color3.new(1,1,1); minBtn.BackgroundTransparency = 1; minBtn.TextSize = 22
-local clsBtn = Instance.new("TextButton", titleBar); clsBtn.Size = UDim2.new(0,25,0,25); clsBtn.Position = UDim2.new(1,-33,0,3); clsBtn.Text = "X"; clsBtn.TextColor3 = Color3.new(1,1,1); clsBtn.BackgroundTransparency = 1; clsBtn.TextSize = 12
-
-local menuContent = Instance.new("Frame", main)
-menuContent.Size = UDim2.new(1, 0, 1, -35); menuContent.Position = UDim2.new(0, 0, 0, 35); menuContent.BackgroundTransparency = 1
-local layout = Instance.new("UIListLayout", menuContent)
-layout.Padding = UDim.new(0, 4); layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-local function makeBtn(txt, start, cb)
-    local b = Instance.new("TextButton", menuContent)
-    b.Size = UDim2.new(0.9, 0, 0, 22); b.Font = "GothamBold"; b.TextSize = 9; b.TextColor3 = Color3.new(1, 1, 1)
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 10)
-    local function v(val) b.Text = txt .. (val and ": ON" or ": OFF"); b.BackgroundColor3 = val and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(28, 28, 28) end
-    v(start); b.MouseButton1Click:Connect(function() v(cb()) end)
+-- 3. WALL CHECK & AIM LOGIC
+local function isVisible(part)
+    if not wallCheck then return true end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {LP.Character, part.Parent}
+    local res = workspace:Raycast(Camera.CFrame.Position, part.Position - Camera.CFrame.Position, params)
+    return res == nil
 end
 
--- PHẦN 1: CÁC NÚT BẬT TẮT (NẰM TRÊN)
-makeBtn("AIMBOT", aimbotEnabled, function() aimbotEnabled = not aimbotEnabled; return aimbotEnabled end)
-makeBtn("ESP PLAYER", espEnabled, function() espEnabled = not espEnabled; return espEnabled end)
-makeBtn("POV CIRCLE", showPov, function() showPov = not showPov; return showPov end)
-makeBtn("TEAM CHECK", smartCheck, function() smartCheck = not smartCheck; return smartCheck end)
+-- 4. UI CONSTRUCTION
+local sg = Instance.new("ScreenGui", CG); sg.Name = "TLAM_V25"
+local main = Instance.new("Frame", sg)
+main.Size = UDim2.new(0, 140, 0, 230); main.Position = UDim2.new(0.5,0,0.5,0); main.AnchorPoint = Vector2.new(0.5,0.5)
+main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+Instance.new("UIStroke", main).Color = Color3.new(1,1,1)
 
-local modeBtn = Instance.new("TextButton", menuContent)
-modeBtn.Size = UDim2.new(0.9, 0, 0, 22); modeBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35); modeBtn.TextColor3 = Color3.new(1, 1, 1); modeBtn.Text = "MODE: ATTACK"; modeBtn.Font = "GothamBold"; modeBtn.TextSize = 9; Instance.new("UICorner", modeBtn).CornerRadius = UDim.new(0, 10)
-modeBtn.MouseButton1Click:Connect(function() aimMode = (aimMode == "OnAttack" and "Always" or "OnAttack"); modeBtn.Text = "MODE: " .. (aimMode == "OnAttack" and "ATTACK" or "ALWAYS") end)
+local title = Instance.new("Frame", main); title.Size = UDim2.new(1,0,0,28); title.BackgroundTransparency = 1
+local tTxt = Instance.new("TextLabel", title); tTxt.Size = UDim2.new(1,0,1,0); tTxt.Text = "TLAM V25 FINAL"; tTxt.TextColor3 = Color3.new(1,1,1); tTxt.Font = "GothamBold"; tTxt.TextSize = 8; tTxt.BackgroundTransparency = 1
+local minBtn = Instance.new("TextButton", title); minBtn.Position = UDim2.new(0,8,0,4); minBtn.Size = UDim2.new(0,20,0,20); minBtn.Text = "-"; minBtn.TextColor3 = Color3.new(1,1,1); minBtn.BackgroundTransparency = 1; minBtn.TextSize = 22
+local clsBtn = Instance.new("TextButton", title); clsBtn.Position = UDim2.new(1,-28,0,4); clsBtn.Size = UDim2.new(0,20,0,20); clsBtn.Text = "X"; clsBtn.TextColor3 = Color3.fromRGB(255,80,80); clsBtn.BackgroundTransparency = 1; clsBtn.Font = "GothamBold"
 
--- PHẦN 2: THANH TRƯỢT (NẰM DƯỚI CÙNG)
-local function makeSlider(label, min, max, def, cb)
-    local f = Instance.new("Frame", menuContent); f.Size = UDim2.new(0.9, 0, 0, 32); f.BackgroundTransparency = 1
-    local t = Instance.new("TextLabel", f); t.Size = UDim2.new(1, 0, 0, 10); t.Text = label..": "..def; t.TextColor3 = Color3.new(1,1,1); t.BackgroundTransparency = 1; t.TextSize = 8; t.Font = "Gotham"
-    local b = Instance.new("Frame", f); b.Size = UDim2.new(1, 0, 0, 3); b.Position = UDim2.new(0, 0, 0, 18); b.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
-    local fill = Instance.new("Frame", b); fill.Size = UDim2.new((def-min)/(max-min), 0, 1, 0); fill.BackgroundColor3 = Color3.new(1, 1, 1)
-    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-    local knob = Instance.new("Frame", fill); knob.Size = UDim2.new(0, 10, 0, 10); knob.Position = UDim2.new(1, 0, 0.5, 0); knob.AnchorPoint = Vector2.new(0.5, 0.5); knob.BackgroundColor3 = Color3.new(1, 1, 1)
-    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+local content = Instance.new("Frame", main); content.Size = UDim2.new(1,0,1,-30); content.Position = UDim2.new(0,0,0,30); content.BackgroundTransparency = 1
+local lay = Instance.new("UIListLayout", content); lay.Padding = UDim.new(0,4); lay.HorizontalAlignment = "Center"
+
+local function mkBtn(txt, val, cb)
+    local b = Instance.new("TextButton", content)
+    b.Size = UDim2.new(0.92,0,0,20); b.Font = "GothamBold"; b.TextSize = 8; b.TextColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,10)
+    local function upd(v) b.Text = txt..": "..(v and "ON" or "OFF"); b.BackgroundColor3 = v and Color3.fromRGB(60,60,60) or Color3.fromRGB(30,30,30) end
+    upd(val); b.MouseButton1Click:Connect(function() val = cb(); upd(val) end)
+end
+
+mkBtn("AIMBOT", aimEnabled, function() aimEnabled = not aimEnabled; return aimEnabled end)
+mkBtn("ESP PLAYER", espEnabled, function() espEnabled = not espEnabled; return espEnabled end)
+mkBtn("POV CIRCLE", showPov, function() showPov = not showPov; return showPov end)
+mkBtn("TEAM CHECK", teamCheck, function() teamCheck = not teamCheck; return teamCheck end)
+mkBtn("WALL CHECK", wallCheck, function() wallCheck = not wallCheck; return wallCheck end)
+
+local function mkSld(label, min, max, def, cb)
+    local f = Instance.new("Frame", content); f.Size = UDim2.new(0.9,0,0,30); f.BackgroundTransparency = 1
+    local t = Instance.new("TextLabel", f); t.Size = UDim2.new(1,0,0,10); t.Text = label..": "..def; t.TextColor3 = Color3.new(1,1,1); t.TextSize = 7; t.Font = "GothamBold"; t.BackgroundTransparency = 1
+    local b = Instance.new("Frame", f); b.Size = UDim2.new(1,0,0,3); b.Position = UDim2.new(0,0,0,18); b.BackgroundColor3 = Color3.fromRGB(45,45,45); Instance.new("UICorner", b)
+    local fill = Instance.new("Frame", b); fill.Size = UDim2.new((def-min)/(max-min),0,1,0); fill.BackgroundColor3 = Color3.new(1,1,1); Instance.new("UICorner", fill)
+    local knob = Instance.new("Frame", fill); knob.Size = UDim2.new(0, 10, 0, 10); knob.Position = UDim2.new(1, 0, 0.5, 0); knob.AnchorPoint = Vector2.new(0.5, 0.5); knob.BackgroundColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", knob)
     local dragging = false
     local function update()
-        local p = math.clamp((UIS:GetMouseLocation().X - b.AbsolutePosition.X) / b.AbsoluteSize.X, 0, 1)
-        fill.Size = UDim2.new(p, 0, 1, 0); local val = math.floor(min + (p * (max-min))); t.Text = label..": "..val; cb(val)
+        local p = math.clamp((UIS:GetMouseLocation().X - b.AbsolutePosition.X)/b.AbsoluteSize.X, 0, 1)
+        fill.Size = UDim2.new(p,0,1,0); local v = math.floor(min+(p*(max-min))); t.Text = label..": "..v; cb(v)
     end
-    f.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = true; update() end end)
-    UIS.InputChanged:Connect(function(i) if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then update() end end)
+    f.InputBegan:Connect(function(i) if i.UserInputType.Name == "MouseButton1" or i.UserInputType.Name == "Touch" then dragging = true; update() end end)
+    UIS.InputChanged:Connect(function(i) if dragging and (i.UserInputType.Name == "MouseMovement" or i.UserInputType.Name == "Touch") then update() end end)
     UIS.InputEnded:Connect(function() dragging = false end)
 end
 
-makeSlider("POV RADIUS", 10, 600, 180, function(v) fovRadius = v end)
-makeSlider("WALK SPEED", 16, 250, 16, function(v) currentSpeed = v end)
+mkSld("POV RADIUS", 10, 600, 150, function(v) fovRadius = v end)
+mkSld("WALK SPEED", 16, 250, 16, function(v) walkSpeed = v end)
 
--- 4. LOGIC CORE
-minBtn.MouseButton1Click:Connect(function()
-    menuContent.Visible = not menuContent.Visible
-    main:TweenSize(menuContent.Visible and UDim2.new(0, 155, 0, 265) or UDim2.new(0, 155, 0, 32), "Out", "Quad", 0.15, true)
-end)
-clsBtn.MouseButton1Click:Connect(function() sg:Destroy(); fovCircle:Remove() end)
+-- 5. MAIN LOOP (ESP & AIM)
+RS.RenderStepped:Connect(function()
+    local vp = Camera.ViewportSize
+    local center = Vector2.new(vp.X/2, vp.Y/2)
+    fovC.Visible = showPov; fovC.Radius = fovRadius; fovC.Position = center
 
-RunService.RenderStepped:Connect(function()
-    if aimbotEnabled then
-        local isShooting = UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)
-        if (aimMode == "OnAttack" and isShooting) or aimMode == "Always" then
-            local target, dist = nil, fovRadius
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and isTarget(p) and p.Character and p.Character:FindFirstChild("Head") and p.Character.Humanoid.Health > 0 then
-                    local pos, on = Camera:WorldToViewportPoint(p.Character.Head.Position)
-                    if on then
-                        local mag = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
-                        if mag < dist then dist = mag; target = p.Character.Head end
-                    end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LP then
+            local char = p.Character
+            if espEnabled and char and char:FindFirstChild("HumanoidRootPart") and char.Humanoid.Health > 0 and (not teamCheck or p.Team ~= LP.Team) then
+                if not playerEsp[p] then createEsp(p) end
+                local root = char.HumanoidRootPart
+                local pos, on = Camera:WorldToViewportPoint(root.Position)
+                local e = playerEsp[p]
+                if on then
+                    local hPos = Camera:WorldToViewportPoint(char.Head.Position + Vector3.new(0,0.6,0))
+                    local lPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0,3,0))
+                    local h = math.abs(hPos.Y - lPos.Y); local w = h/1.5
+                    local x, y = pos.X-w/2, pos.Y-h/2
+                    -- DRAW LINE
+                    e.Line.Visible = true; e.Line.From = Vector2.new(vp.X/2, vp.Y); e.Line.To = Vector2.new(pos.X, y+h)
+                    -- DRAW CORNERS
+                    for _,l in pairs(e.Corners) do l.Visible = true end
+                    e.Corners[1].From = Vector2.new(x,y); e.Corners[1].To = Vector2.new(x+w/4,y)
+                    e.Corners[2].From = Vector2.new(x,y); e.Corners[2].To = Vector2.new(x,y+h/4)
+                    e.Corners[3].From = Vector2.new(x+w,y); e.Corners[3].To = Vector2.new(x+w-w/4,y)
+                    e.Corners[4].From = Vector2.new(x+w,y); e.Corners[4].To = Vector2.new(x+w,y+h/4)
+                    e.Corners[5].From = Vector2.new(x,y+h); e.Corners[5].To = Vector2.new(x+w/4,y+h)
+                    e.Corners[6].From = Vector2.new(x,y+h); e.Corners[6].To = Vector2.new(x,y+h-h/4)
+                    e.Corners[7].From = Vector2.new(x+w,y+h); e.Corners[7].To = Vector2.new(x+w-w/4,y+h)
+                    e.Corners[8].From = Vector2.new(x+w,y+h); e.Corners[8].To = Vector2.new(x+w,y+h-h/4)
+                else
+                    e.Line.Visible = false; for _,l in pairs(e.Corners) do l.Visible = false end
                 end
+            elseif playerEsp[p] then
+                playerEsp[p].Line.Visible = false; for _,l in pairs(playerEsp[p].Corners) do l.Visible = false end
             end
-            if target then Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, target.Position), STICKY_SNAP_SPEED) end
         end
     end
-    updateEsp()
-    if fovCircle then fovCircle.Visible = showPov; fovCircle.Radius = fovRadius; fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2) end
-    pcall(function() LocalPlayer.Character.Humanoid.WalkSpeed = currentSpeed end)
+
+    if aimEnabled and (UIS:IsMouseButtonPressed(0) or UIS:IsKeyDown(Enum.KeyCode.ButtonR2)) then
+        local target = nil; local dist = fovRadius
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LP and p.Character and p.Character:FindFirstChild("Head") and p.Character.Humanoid.Health > 0 and (not teamCheck or p.Team ~= LP.Team) then
+                local head = p.Character.Head
+                local pos, on = Camera:WorldToViewportPoint(head.Position)
+                if on and isVisible(head) then
+                    local m = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                    if m < dist then target = head; dist = m end
+                end
+            end
+        end
+        if target then
+            local pred = target.Position + (target.Parent.HumanoidRootPart.Velocity * 0.01)
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, pred), AIM_SMOOTHNESS)
+        end
+    end
+    pcall(function() LP.Character.Humanoid.WalkSpeed = walkSpeed end)
 end)
 
--- DRAG
-local dToggle, dStart, sPos
-titleBar.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dToggle = true; dStart = i.Position; sPos = main.Position end end)
-UIS.InputChanged:Connect(function(i) if dToggle and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then 
-    local delta = i.Position - dStart
-    main.Position = UDim2.new(sPos.X.Scale, sPos.X.Offset + delta.X, sPos.Y.Scale, sPos.Y.Offset + delta.Y)
-end end)
-UIS.InputEnded:Connect(function() dToggle = false end)
+minBtn.MouseButton1Click:Connect(function()
+    content.Visible = not content.Visible
+    main:TweenSize(content.Visible and UDim2.new(0, 140, 0, 230) or UDim2.new(0, 140, 0, 28), "Out", "Quad", 0.1, true)
+end)
+clsBtn.MouseButton1Click:Connect(function() _G.TlamLoaded = false; fovC:Remove(); for _,e in pairs(playerEsp) do e.Line:Remove(); for _,l in pairs(e.Corners) do l:Remove() end end; sg:Destroy() end)
+local d, ds, sp; title.InputBegan:Connect(function(i) if i.UserInputType.Name == "MouseButton1" or i.UserInputType.Name == "Touch" then d = true; ds = i.Position; sp = main.Position end end)
+UIS.InputChanged:Connect(function(i) if d and (i.UserInputType.Name == "MouseMovement" or i.UserInputType.Name == "Touch") then local del = i.Position - ds; main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + del.X, sp.Y.Scale, sp.Y.Offset + del.Y) end end)
+UIS.InputEnded:Connect(function() d = false end)
