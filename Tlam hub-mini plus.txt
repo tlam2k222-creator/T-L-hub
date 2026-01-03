@@ -1,6 +1,7 @@
 --[[ 
-    TLAM HUB - V25 UNIVERSAL COMPATIBILITY
+    TLAM HUB - V25 UNIVERSAL COMPATIBILITY (FIXED ESP)
     - Fix: Auto-switch between CoreGui and PlayerGui
+    - Fix: ESP cleanup when player leaves
     - Aim: Precision Hybrid (0.4)
     - UI: Micro Cyber Roll-up
 ]]
@@ -13,7 +14,7 @@ local UIS = game:GetService("UserInputService")
 local TS = game:GetService("TweenService")
 local CG = game:GetService("CoreGui")
 
--- KIỂM TRA ĐIỂM ĐẶT MENU (Sửa lỗi không hiện menu)
+-- KIỂM TRA ĐIỂM ĐẶT MENU
 local ParentUI
 local success, err = pcall(function()
     ParentUI = (gethui and gethui()) or CG:FindFirstChild("RobloxGui") or CG
@@ -49,10 +50,19 @@ local function createEsp(p)
     playerEsp[p] = e
 end
 
+-- Hàm dọn dẹp ESP (Fix lỗi người chơi thoát game)
+local function removeEsp(p)
+    if playerEsp[p] then
+        playerEsp[p].Line:Remove()
+        for _, l in pairs(playerEsp[p].Corners) do l:Remove() end
+        playerEsp[p] = nil
+    end
+end
+
 -- 3. UI CONSTRUCTION
 local sg = Instance.new("ScreenGui"); sg.Name = "TLAM_V25"; sg.ResetOnSpawn = false; sg.Parent = ParentUI
 local main = Instance.new("Frame", sg)
-main.Size = UDim2.new(0, 130, 0, 215) -- Chiều cao thu gọn tối đa
+main.Size = UDim2.new(0, 130, 0, 215)
 main.Position = UDim2.new(0.5, 0, 0.4, 0); main.AnchorPoint = Vector2.new(0.5, 0)
 main.BackgroundColor3 = Color3.fromRGB(12, 12, 12); main.BorderSizePixel = 0; main.Active = true; main.ClipsDescendants = true
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 15)
@@ -112,11 +122,18 @@ RS.RenderStepped:Connect(function()
     local screenCenter = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
     fovC.Visible = showPov; fovC.Radius = fovRadius; fovC.Position = screenCenter 
 
+    -- Kiểm tra dọn dẹp ESP cho người chơi đã thoát
+    for p, _ in pairs(playerEsp) do
+        if not Players:FindFirstChild(p.Name) then
+            removeEsp(p)
+        end
+    end
+
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= LP then
             local e = playerEsp[p]; if not e then createEsp(p) e = playerEsp[p] end
             local char = p.Character; local isVis = false
-            if espEnabled and (not teamCheck or p.Team ~= LP.Team) and char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char.Humanoid.Health > 0 then
+            if espEnabled and (not teamCheck or p.Team ~= LP.Team) and char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
                 local root = char.HumanoidRootPart; local pos, on = Camera:WorldToViewportPoint(root.Position)
                 if on then
                     isVis = true
@@ -139,11 +156,12 @@ RS.RenderStepped:Connect(function()
         end
     end
     
+    -- AIMBOT
     if aimEnabled and UIS:IsMouseButtonPressed(0) then
         local target = nil; local dist = fovRadius
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LP and p.Character and p.Character:FindFirstChild("Head") and (not teamCheck or p.Team ~= LP.Team) then
-                if p.Character.Humanoid.Health > 0 then
+                if p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
                     local head = p.Character.Head
                     local pos, on = Camera:WorldToViewportPoint(head.Position)
                     if on and (not wallCheck or (function()
@@ -158,5 +176,5 @@ RS.RenderStepped:Connect(function()
         end
         if target then Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, target.Position), AIM_SMOOTHNESS) end
     end
-    pcall(function() LP.Character.Humanoid.WalkSpeed = walkSpeed end)
+    pcall(function() if LP.Character and LP.Character:FindFirstChild("Humanoid") then LP.Character.Humanoid.WalkSpeed = walkSpeed end end)
 end)
